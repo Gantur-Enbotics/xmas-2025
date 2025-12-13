@@ -232,7 +232,7 @@ export default function PhoneAuthModal({
                     }
                     maxLength={6}
                     placeholder="123456"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-center text-2xl tracking-widest"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-center text-2xl tracking-widest text-gray-500"
                   />
 
                   <button
