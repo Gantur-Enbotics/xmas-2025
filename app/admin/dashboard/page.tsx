@@ -338,7 +338,7 @@ export default function AdminDashboard() {
                         type="tel"
                         value={formData.phone}
                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none text-gray-500"
                         placeholder="+1234567890"
                         required
                       />
@@ -352,7 +352,7 @@ export default function AdminDashboard() {
                         type="text"
                         value={formData.title}
                         onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none text-gray-500"
                         placeholder="A Special Christmas Wish"
                         required
                       />
@@ -365,7 +365,7 @@ export default function AdminDashboard() {
                       <textarea
                         value={formData.context}
                         onChange={(e) => setFormData({ ...formData, context: e.target.value })}
-                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none h-32"
+                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none h-32 text-gray-500"
                         placeholder="Your Christmas message..."
                         required
                       />
@@ -378,7 +378,7 @@ export default function AdminDashboard() {
                       <textarea
                         value={formData.extra_note}
                         onChange={(e) => setFormData({ ...formData, extra_note: e.target.value })}
-                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none h-24"
+                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none h-24 text-gray-500"
                         placeholder="Additional special note..."
                       />
                     </div>
@@ -392,7 +392,7 @@ export default function AdminDashboard() {
                           type="url"
                           value={newPictureUrl}
                           onChange={(e) => setNewPictureUrl(e.target.value)}
-                          className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+                          className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none text-gray-500"
                           placeholder="https://example.com/image.jpg"
                         />
                         <button

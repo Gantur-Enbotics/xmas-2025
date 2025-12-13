@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 :root {
   --foreground-rgb: 0, 0, 0;
@@ -96,4 +94,57 @@ body {
 .prose-lg p {
   margin-top: 1.3333333em;
   margin-bottom: 1.3333333em;
+}
+
+/* PERFORMANCE OPTIMIZATIONS */
+
+/* Enable GPU acceleration for animations */
+.gpu-accelerated {
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Optimize animations */
+@media (prefers-reduced-motion: no-preference) {
+  .animate-spin {
+    animation: spin 1s linear infinite;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Optimize image loading */
+img {
+  content-visibility: auto;
+}
+
+/* Lazy load offscreen content */
+.lazy-content {
+  content-visibility: auto;
+  contain-intrinsic-size: 500px;
+}
+
+/* Optimize repaints */
+.no-repaint {
+  contain: layout style paint;
 }

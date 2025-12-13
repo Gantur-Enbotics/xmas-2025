@@ -42,7 +42,7 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-100 via-white to-green-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-linear-to-br from-red-100 via-white to-green-100 flex items-center justify-center p-4">
       <Toaster position="top-center" />
       
       {/* Floating Snowflakes */}
@@ -77,7 +77,7 @@ export default function AdminLogin() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+                className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none text-gray-500"
                 placeholder="Enter username"
                 required
               />
@@ -94,7 +94,7 @@ export default function AdminLogin() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+                className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none text-gray-500"
                 placeholder="Enter password"
                 required
               />
@@ -106,7 +106,7 @@ export default function AdminLogin() {
             disabled={loading}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            className="w-full bg-gradient-to-r from-red-500 to-green-500 text-white py-3 rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 flex items-center justify-center"
+            className="w-full bg-linear-to-r from-red-500 to-green-500 text-white py-3 rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 flex items-center justify-center"
           >
             {loading ? (
               <Loader2 className="animate-spin" size={20} />

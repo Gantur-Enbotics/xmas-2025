@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 import LetterCard from '@/components/LetterCard';
@@ -17,11 +17,8 @@ export default function Home() {
   const [isLetterModalOpen, setIsLetterModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchPublicLetters();
-  }, []);
-
-  const fetchPublicLetters = async () => {
+  // Memoize the fetch function to prevent recreation on every render
+  const fetchPublicLetters = useCallback(async () => {
     try {
       const response = await fetch('/api/letters/public');
       const data = await response.json();
@@ -36,23 +33,41 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleLetterClick = (letter: any) => {
+  useEffect(() => {
+    fetchPublicLetters();
+  }, [fetchPublicLetters]);
+
+  // Memoize click handler to prevent recreation
+  const handleLetterClick = useCallback((letter: any) => {
     setSelectedLetter(letter);
     setIsAuthModalOpen(true);
-  };
+  }, []);
 
-  const handleAuthSuccess = (userData: any) => {
+  // Memoize auth success handler
+  const handleAuthSuccess = useCallback((userData: any) => {
     setIsLetterModalOpen(true);
-  };
+  }, []);
+
+  // Memoize close handlers
+  const handleAuthModalClose = useCallback(() => {
+    setIsAuthModalOpen(false);
+  }, []);
+
+  const handleLetterModalClose = useCallback(() => {
+    setIsLetterModalOpen(false);
+  }, []);
+
+  // Memoize empty state check
+  const hasNoLetters = useMemo(() => letters.length === 0, [letters.length]);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-red-100 via-white to-green-100">
+    <main className="min-h-screen bg-linear-to-br from-red-100 via-white to-green-100">
       <Toaster position="top-center" />
       
-      {/* Floating Snowflakes */}
-      <Snowflakes count={15} />
+      {/* Falling Snowflakes - balanced count */}
+      <Snowflakes count={25} />
 
       {/* Header */}
       <motion.header
@@ -63,6 +78,7 @@ export default function Home() {
       >
         <div className="container mx-auto px-4">
           <div className="text-center">
+            {/* Animated tree emoji */}
             <motion.div
               animate={{ rotate: [0, 10, -10, 0] }}
               transition={{ duration: 2, repeat: Infinity }}
@@ -70,23 +86,12 @@ export default function Home() {
             >
               🎄
             </motion.div>
-            <h1 className="text-5xl md:text-7xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-green-600 mb-4">
+            <h1 className="text-5xl md:text-7xl font-bold text-transparent bg-clip-text bg-linear-to-r from-red-600 to-green-600 mb-4">
               Christmas Letters 2025
             </h1>
             <p className="text-xl text-gray-700 mb-6">
               Special messages of love, joy, and holiday cheer ✨
             </p>
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Link
-                href="/admin"
-                className="inline-block bg-gradient-to-r from-red-600 to-green-600 text-white px-8 py-3 rounded-full font-semibold shadow-lg hover:shadow-xl transition-all"
-              >
-                Admin Dashboard
-              </Link>
-            </motion.div>
           </div>
         </div>
       </motion.header>
@@ -95,6 +100,7 @@ export default function Home() {
       <div className="container mx-auto px-4 py-12 relative z-10">
         {loading ? (
           <div className="flex justify-center items-center py-20">
+            {/* Spinning gift */}
             <motion.div
               animate={{ rotate: 360 }}
               transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
@@ -105,21 +111,6 @@ export default function Home() {
           </div>
         ) : (
           <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-              className="text-center mb-12"
-            >
-              <Sparkles className="inline-block text-yellow-500 mb-4" size={40} />
-              <h2 className="text-3xl font-bold text-gray-800 mb-2">
-                Available Letters
-              </h2>
-              <p className="text-gray-600">
-                Click on any letter to unlock your special Christmas message
-              </p>
-            </motion.div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
               {letters.map((letter, index) => (
                 <LetterCard
@@ -132,7 +123,7 @@ export default function Home() {
               ))}
             </div>
 
-            {letters.length === 0 && (
+            {hasNoLetters && (
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
@@ -156,20 +147,21 @@ export default function Home() {
         className="relative z-10 py-8 text-center"
       >
         <p className="text-gray-600">
-          Made with ❤️ for Christmas 2025 | Happy Holidays! 🎄
+          Made with ❤️ by Gantur | Happy Holidays! 🎄
         </p>
       </motion.footer>
 
       {/* Modals */}
       <PhoneAuthModal
         isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
+        onClose={handleAuthModalClose}
         onSuccess={handleAuthSuccess}
+        phoneNumber={selectedLetter?.phone || ''}
       />
 
       <LetterModal
         isOpen={isLetterModalOpen}
-        onClose={() => setIsLetterModalOpen(false)}
+        onClose={handleLetterModalClose}
         letter={selectedLetter}
       />
     </main>

@@ -10,15 +10,16 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    const letters = await XmasUser.find({ deleted: false })
-      .select('_id title context phone created_at')
-      .sort({ created_at: -1 });
+   const letters = await XmasUser.find({ deleted: false }).select('-__v').sort({ created_at: -1 });
 
-    // Return only preview data (first 100 characters of content)
     const previews = letters.map((letter) => ({
       _id: letter._id,
       title: letter.title,
-      preview: letter.context.substring(0, 100) + (letter.context.length > 100 ? '...' : ''),
+      context: letter.context,
+      extra_note: letter.extra_note,
+      loggedAt: letter.loggedAt,
+      phone: letter.phone,
+      pictures: letter.pictures,
       created_at: letter.created_at,
     }));
 

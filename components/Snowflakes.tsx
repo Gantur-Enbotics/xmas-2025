@@ -1,50 +1,71 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 
 interface SnowflakesProps {
   count?: number;
 }
 
-export default function Snowflakes({ count = 15 }: SnowflakesProps) {
+export default function Snowflakes({ count = 12 }: SnowflakesProps) {
   const [mounted, setMounted] = useState(false);
-  const [snowflakes, setSnowflakes] = useState<Array<{ id: number; initialX: number; delay: number }>>([]);
 
+  // Only mount on client side to avoid hydration mismatch
   useEffect(() => {
     setMounted(true);
-    // Generate snowflake positions only on client
-    setSnowflakes(
-      Array.from({ length: count }, (_, i) => ({
-        id: i,
-        initialX: Math.random() * window.innerWidth,
-        delay: Math.random() * 5,
-      }))
-    );
-  }, [count]);
+  }, []);
 
+  // Generate snowflake data only after mounting
+  const snowflakes = useMemo(() => {
+    if (!mounted) return [];
+    
+    return Array.from({ length: count }, (_, i) => ({
+      id: i,
+      // Use percentage for horizontal position
+      left: Math.random() * 100,
+      // Random animation delay
+      delay: Math.random() * 5,
+      // Random duration for varied speeds
+      duration: 8 + Math.random() * 7,
+      // Random horizontal drift
+      drift: -10 + Math.random() * 20,
+      // Random size
+      size: 1 + Math.random() * 1.5,
+    }));
+  }, [count, mounted]);
+
+  // Don't render on server to avoid hydration mismatch
   if (!mounted) {
-    return null; // Don't render on server
+    return null;
   }
 
   return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden">
+    <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
       {snowflakes.map((flake) => (
         <motion.div
           key={flake.id}
-          initial={{ y: -20, x: flake.initialX }}
+          className="absolute"
+          style={{
+            left: `${flake.left}%`,
+            fontSize: `${flake.size}rem`,
+          }}
+          initial={{ 
+            y: '-10%',
+            x: 0,
+            opacity: 0,
+          }}
           animate={{
-            y: window.innerHeight + 20,
-            x: flake.initialX + Math.random() * 100 - 50,
+            y: '110vh',
+            x: flake.drift,
+            opacity: [0, 1, 1, 0],
             rotate: 360,
           }}
           transition={{
-            duration: 10 + Math.random() * 5,
+            duration: flake.duration,
             repeat: Infinity,
-            ease: 'linear',
             delay: flake.delay,
+            ease: 'linear',
           }}
-          className="absolute text-2xl opacity-60"
         >
           ❄️
         </motion.div>

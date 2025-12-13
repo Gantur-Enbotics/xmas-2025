@@ -5,12 +5,15 @@ import XmasUser from '@/models/xmasUser';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const { phone } = await request.json();
+    const { phone } = await req.json();
 
     if (!phone) {
-      return NextResponse.json({ error: 'Phone number is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Phone number is required' },
+        { status: 400 }
+      );
     }
 
     await connectDB();
@@ -18,20 +21,17 @@ export async function POST(request: NextRequest) {
     const user = await XmasUser.findOne({ phone, deleted: false });
 
     if (!user) {
-      return NextResponse.json({ error: 'No letter found for this phone number' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'No letter found for this phone number' },
+        { status: 404 }
+      );
     }
 
-    // Check if user can resend verification (2 days cooldown)
-    const canResend = !user.loggedAt || 
-      (Date.now() - new Date(user.loggedAt).getTime()) > 2 * 24 * 60 * 60 * 1000;
-
-    // Update loggedAt timestamp
     user.loggedAt = new Date();
     await user.save();
 
     return NextResponse.json({
       success: true,
-      canResend,
       user: {
         _id: user._id,
         phone: user.phone,
@@ -42,8 +42,11 @@ export async function POST(request: NextRequest) {
         created_at: user.created_at,
       },
     });
-  } catch (error) {
-    console.error('Auth check error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch (err) {
+    console.error('mark-verified error:', err);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
