@@ -4,14 +4,21 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Phone, X, Loader2 } from 'lucide-react';
 import { auth } from '@/lib/firebase';
-import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
+import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 import toast from 'react-hot-toast';
 
 interface PhoneAuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (userData: any) => void;
+  onSuccess: (user: any) => void;
   phoneNumber: string;
+}
+
+// Declare global types to avoid TS errors with window
+declare global {
+  interface Window {
+    recaptchaVerifier: RecaptchaVerifier | undefined;
+  }
 }
 
 export default function PhoneAuthModal({
@@ -21,162 +28,159 @@ export default function PhoneAuthModal({
   phoneNumber,
 }: PhoneAuthModalProps) {
   const [verificationCode, setVerificationCode] = useState('');
-  const [confirmationResult, setConfirmationResult] = useState<any>(null);
-  const [sendingCode, setSendingCode] = useState(false);
-  const [verifying, setVerifying] = useState(false);
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [status, setStatus] = useState<'IDLE' | 'SENDING' | 'SENT' | 'VERIFYING'>('IDLE');
+  
+  // Track initialization to prevent double-firing
+  const hasInitedRef = useRef(false);
 
-  const initializedRef = useRef(false);
-
-  /* -------------------- Helpers -------------------- */
-
+  // Helper: Format Phone for Firebase (Mongolia default)
   const formattedPhone = phoneNumber.startsWith('+')
     ? phoneNumber
-    : `+${phoneNumber}`;
+    : `+976${phoneNumber.replace(/^0+/, '')}`;
 
+  /* -------------------- 1. Cleanup Recaptcha -------------------- */
   const clearRecaptcha = () => {
-    const verifier = (window as any).recaptchaVerifier;
-    if (verifier) {
+    if (window.recaptchaVerifier) {
       try {
-        verifier.clear();
-      } catch {}
-      (window as any).recaptchaVerifier = null;
+        window.recaptchaVerifier.clear();
+      } catch (e) {
+        console.warn('Recaptcha clear error', e);
+      }
+      window.recaptchaVerifier = undefined;
     }
   };
 
-  const setupRecaptcha = () => {
-    clearRecaptcha();
-    (window as any).recaptchaVerifier = new RecaptchaVerifier(
-      auth,
-      'recaptcha-container',
-      { size: 'invisible' }
-    );
-  };
-
-  /* -------------------- Send SMS -------------------- */
-
+  /* -------------------- 2. Initialize & Send -------------------- */
   const sendVerificationCode = useCallback(async () => {
-    if (!phoneNumber || phoneNumber.length < 10) {
-      toast.error('Invalid phone number');
-      return;
-    }
+    if (!phoneNumber || phoneNumber.length < 6) return;
+    
+    // Prevent double-send if already sending or sent
+    if (status === 'SENDING' || status === 'SENT') return;
 
-    setSendingCode(true);
+    setStatus('SENDING');
 
     try {
-      // 1️⃣ Check cooldown FIRST (backend)
-      const check = await fetch('/api/auth/can-send-sms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: formattedPhone }),
+      // Step A: Ensure previous instances are gone
+      clearRecaptcha();
+
+      // Step B: Wait a tick for the DOM <div id="recaptcha"> to exist
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const container = document.getElementById('recaptcha-container');
+      if (!container) {
+        throw new Error('Recaptcha container not found in DOM');
+      }
+
+      // Step C: Initialize Verifier
+      const verifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+        size: 'invisible',
+        callback: () => {
+          // reCAPTCHA solved, allow signInWithPhoneNumber.
+          // (Firebase handles this automatically usually)
+        },
+        'expired-callback': () => {
+          toast.error('Recaptcha expired. Please try again.');
+          setStatus('IDLE');
+        },
       });
 
-      const checkData = await check.json();
+      window.recaptchaVerifier = verifier;
 
-      if (!check.ok) {
-        toast.error(checkData.error);
-        return;
-      }
-
-      if (!checkData.canResend) {
-        toast.error('You can request a new code after 2 days.');
-        return;
-      }
-
-      // 2️⃣ Setup reCAPTCHA
-      setupRecaptcha();
-      const appVerifier = (window as any).recaptchaVerifier;
-
-      // 3️⃣ Send SMS via Firebase
-      const result = await signInWithPhoneNumber(
-        auth,
-        formattedPhone,
-        appVerifier
-      );
-
+      // Step D: Send SMS
+      // Important: We pass the verifier instance directly
+      const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+      
       setConfirmationResult(result);
-      initializedRef.current = true;
-      toast.success('Verification code sent!');
+      setStatus('SENT');
+      toast.success('Code sent!');
+
     } catch (err: any) {
-      console.error('Send SMS error:', err);
-      toast.error(err.message || 'Failed to send code');
-      clearRecaptcha();
-    } finally {
-      setSendingCode(false);
+      console.error('SMS Error:', err);
+      setStatus('IDLE');
+      clearRecaptcha(); // Clean up so they can try again
+
+      if (err.code === 'auth/too-many-requests') {
+        toast.error('Too many attempts. Try again later.');
+      } else if (err.code === 'auth/invalid-phone-number') {
+        toast.error('Invalid phone number format.');
+      } else if (err.message.includes('reCAPTCHA client element has been removed')) {
+        toast.error('Please close and reopen the window.');
+      } else {
+        toast.error('Failed to send code. Try again.');
+      }
     }
-  }, [phoneNumber, formattedPhone]);
+  }, [phoneNumber, formattedPhone, status]);
 
-  /* -------------------- Verify Code -------------------- */
-
-  const handleVerifyCode = useCallback(async () => {
+  /* -------------------- 3. Verify Code -------------------- */
+  const handleVerifyCode = async () => {
     if (verificationCode.length !== 6) {
       toast.error('Enter the 6-digit code');
       return;
     }
 
     if (!confirmationResult) {
-      toast.error('Request a verification code first');
+      toast.error('Session expired. Please resend code.');
       return;
     }
 
-    setVerifying(true);
+    setStatus('VERIFYING');
 
     try {
-      // 1️⃣ Firebase verification
-      await confirmationResult.confirm(verificationCode);
-
-      // 2️⃣ Mark verified in DB (update loggedAt)
-      const res = await fetch('/api/auth/mark-verified', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: formattedPhone }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        toast.error(data.error || 'Verification failed');
-        return;
-      }
-
-      toast.success('Authentication successful!');
-      onSuccess(data.user);
+      const result = await confirmationResult.confirm(verificationCode);
+      toast.success('Verified successfully!');
+      onSuccess(result.user);
       handleClose();
     } catch (err: any) {
-      console.error('Verify error:', err);
-      toast.error('Invalid or expired code');
-    } finally {
-      setVerifying(false);
+      console.error('Verify Error:', err);
+      setStatus('SENT'); // Go back to 'SENT' state so they can retry typing
+      toast.error('Incorrect code. Please check and try again.');
     }
-  }, [verificationCode, confirmationResult, formattedPhone, onSuccess]);
-
-  /* -------------------- Resend -------------------- */
-
-  const handleResend = async () => {
-    setVerificationCode('');
-    setConfirmationResult(null);
-    initializedRef.current = false;
-    clearRecaptcha();
-    await sendVerificationCode();
   };
 
-  /* -------------------- Lifecycle -------------------- */
+  /* -------------------- 4. Resend -------------------- */
+  const handleResend = async () => {
+    // Reset state completely to force a fresh recaptcha generation
+    setStatus('IDLE');
+    setConfirmationResult(null);
+    setVerificationCode('');
+    hasInitedRef.current = false;
+    
+    // Trigger send again (via the effect or direct call)
+    // We call directly here to bypass the Effect dependency confusion
+    setTimeout(() => {
+        sendVerificationCode();
+    }, 200);
+  };
 
+  /* -------------------- 5. Lifecycle -------------------- */
   useEffect(() => {
-    if (isOpen && !initializedRef.current) {
-      sendVerificationCode();
+    // ONLY trigger when isOpen turns true AND we haven't started yet
+    if (isOpen && !hasInitedRef.current) {
+      hasInitedRef.current = true;
+      // Small delay to let the Modal Animation finish rendering the DOM
+      const timer = setTimeout(() => {
+        sendVerificationCode();
+      }, 500); 
+      return () => clearTimeout(timer);
+    }
+    
+    // Reset if closed
+    if (!isOpen) {
+      hasInitedRef.current = false;
+      setStatus('IDLE');
+      setVerificationCode('');
+      setConfirmationResult(null);
+      clearRecaptcha();
     }
   }, [isOpen, sendVerificationCode]);
 
   const handleClose = () => {
-    setVerificationCode('');
-    setConfirmationResult(null);
-    initializedRef.current = false;
     clearRecaptcha();
     onClose();
   };
 
   /* -------------------- UI -------------------- */
-
   return (
     <AnimatePresence>
       {isOpen && (
@@ -188,76 +192,83 @@ export default function PhoneAuthModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           />
-
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div
-              className="bg-linear-to-br from-red-50 to-green-50 rounded-2xl shadow-2xl max-w-md w-full p-8 relative"
-              onClick={(e) => e.stopPropagation()}
-              initial={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 relative overflow-hidden"
+              initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
+              exit={{ scale: 0.95, opacity: 0 }}
             >
               <button
                 onClick={handleClose}
-                className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <X size={24} />
               </button>
 
-              <div className="text-center mb-6">
-                <div className="w-16 h-16 bg-linear-to-br from-red-500 to-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Phone className="text-white" size={32} />
+              <div className="text-center mb-8">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Phone className="text-green-600" size={32} />
                 </div>
                 <h2 className="text-2xl font-bold text-gray-800">
                   Verify Your Phone
                 </h2>
-                <p className="text-gray-600 mt-2">
-                  {sendingCode
-                    ? 'Sending verification code...'
-                    : `Enter the code sent to ${phoneNumber}`}
+                <p className="text-gray-500 mt-2 text-sm">
+                  {status === 'SENDING'
+                    ? 'Preparing secure verification...'
+                    : `Enter the code sent to ${formattedPhone}`}
                 </p>
               </div>
 
-              {sendingCode ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="animate-spin text-red-500" size={40} />
+              {status === 'SENDING' || status === 'IDLE' ? (
+                <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                  <Loader2 className="animate-spin text-green-600" size={48} />
+                  <p className="text-sm text-gray-400">Communicating with server...</p>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <input
                     type="text"
                     value={verificationCode}
-                    onChange={(e) =>
-                      setVerificationCode(e.target.value.replace(/\D/g, ''))
-                    }
-                    maxLength={6}
-                    placeholder="123456"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-center text-2xl tracking-widest text-gray-500"
+                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="w-full text-center text-3xl font-bold tracking-[0.5em] py-4 border-b-2 border-gray-200 focus:border-green-500 focus:outline-none transition-colors text-gray-500"
+                    placeholder="······"
+                    autoFocus
+                    disabled={status === 'VERIFYING'}
                   />
 
                   <button
                     onClick={handleVerifyCode}
-                    disabled={verifying}
-                    className="w-full bg-linear-to-r from-red-500 to-green-500 text-white py-3 rounded-lg font-semibold"
+                    disabled={status === 'VERIFYING' || verificationCode.length < 6}
+                    className="w-full bg-linear-to-r from-green-500 to-emerald-600 text-white py-3.5 rounded-xl font-semibold shadow-lg shadow-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-px transition-all"
                   >
-                    {verifying ? (
-                      <Loader2 className="animate-spin mx-auto" size={20} />
+                    {status === 'VERIFYING' ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <Loader2 className="animate-spin" size={20} />
+                        <span>Verifying...</span>
+                      </div>
                     ) : (
                       'Verify Code'
                     )}
                   </button>
 
-                  <button
-                    onClick={handleResend}
-                    disabled={sendingCode || verifying}
-                    className="w-full text-gray-600 py-2 text-sm"
-                  >
-                    Didn’t receive code? Resend
-                  </button>
+                  <p className="text-center text-sm text-gray-500">
+                    Didn't receive code?{' '}
+                    <button 
+                      onClick={handleResend}
+                      className="text-green-600 font-medium hover:underline focus:outline-none"
+                    >
+                      Resend
+                    </button>
+                  </p>
                 </div>
               )}
-
-              <div id="recaptcha-container" />
+              
+              {/* Container MUST be present in DOM when sendVerificationCode runs.
+                 We keep it hidden but technically "visible" to the DOM (not display:none) 
+                 so Recaptcha can attach. 
+              */}
+              <div id="recaptcha-container" className="invisible w-0 h-0" />
             </motion.div>
           </div>
         </>

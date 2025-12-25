@@ -1,8 +1,89 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Loader2, ImageOff } from 'lucide-react';
+
+interface IPicture {
+  type: 'url' | 'uploaded';
+  data: string;
+  filename?: string;
+}
+
+const MediaDisplay = ({
+  src,
+  direction,
+  dragHandlers
+}: {
+  src: string;
+  direction: number;
+  dragHandlers: any;
+}) => {
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
+
+  useEffect(() => {
+    setStatus('loading');
+  }, [src]);
+
+  if (!src || typeof src !== 'string') return null;
+
+  const isVideo = 
+    /\.(mp4|webm|ogg)$/i.test(src) || 
+    src.startsWith('data:video');
+
+  const variants = {
+    enter: (dir: number) => ({ x: dir > 0 ? 1000 : -1000, opacity: 0 }),
+    center: { x: 0, opacity: 1 },
+    exit: (dir: number) => ({ x: dir > 0 ? -1000 : 1000, opacity: 0 }),
+  };
+
+  return (
+    <motion.div
+      variants={variants}
+      initial="enter"
+      animate="center"
+      exit="exit"
+      custom={direction}
+      transition={{ x: { type: 'spring', stiffness: 300, damping: 30 }, opacity: { duration: 0.2 } }}
+      className="absolute inset-0 w-full h-full flex items-center justify-center bg-gray-900"
+      {...dragHandlers}
+    >
+      {status === 'loading' && (
+        <div className="absolute inset-0 flex items-center justify-center z-0">
+          <Loader2 className="w-10 h-10 text-white/50 animate-spin" />
+        </div>
+      )}
+
+      {status === 'error' && (
+        <div className="flex flex-col items-center justify-center text-white/50 gap-2">
+          <ImageOff size={48} />
+          <p className="text-sm">Image unavailable</p>
+        </div>
+      )}
+
+      {isVideo ? (
+        <video
+          src={src}
+          className={`w-full h-full object-contain z-10 ${status === 'loading' ? 'opacity-0' : 'opacity-100'}`}
+          autoPlay
+          muted
+          loop
+          playsInline
+          onLoadedData={() => setStatus('loaded')}
+          onError={() => setStatus('error')}
+        />
+      ) : (
+        <img
+          src={src}
+          alt="Memory"
+          className={`w-full h-full object-contain z-10 pointer-events-none select-none ${status === 'loading' ? 'opacity-0' : 'opacity-100'}`}
+          onLoad={() => setStatus('loaded')}
+          onError={() => setStatus('error')}
+        />
+      )}
+    </motion.div>
+  );
+};
 
 interface LetterModalProps {
   isOpen: boolean;
@@ -11,49 +92,60 @@ interface LetterModalProps {
     title: string;
     context: string;
     extra_note: string;
-    pictures: string[];
+    pictures: IPicture[];
   } | null;
 }
+
+// Helper to extract image source from IPicture or legacy string
+const getImageSrc = (picture: IPicture | string): string => {
+  if (typeof picture === 'string') return picture;
+  return picture?.data || '';
+};
 
 export default function LetterModal({ isOpen, onClose, letter }: LetterModalProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [direction, setDirection] = useState(0);
 
-  const nextImage = useCallback(() => {
-    if (letter?.pictures && letter.pictures.length > 0) {
-      setDirection(1);
-      setCurrentImageIndex((prev) => (prev + 1) % letter.pictures.length);
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentImageIndex(0);
+      setDirection(0);
     }
-  }, [letter?.pictures]);
+  }, [isOpen, letter]);
+
+  const safePictures = letter?.pictures || [];
+
+  const nextImage = useCallback(() => {
+    if (safePictures.length > 0) {
+      setDirection(1);
+      setCurrentImageIndex((prev) => (prev + 1) % safePictures.length);
+    }
+  }, [safePictures.length]);
 
   const prevImage = useCallback(() => {
-    if (letter?.pictures && letter.pictures.length > 0) {
+    if (safePictures.length > 0) {
       setDirection(-1);
-      setCurrentImageIndex((prev) => (prev - 1 + letter.pictures.length) % letter.pictures.length);
+      setCurrentImageIndex((prev) => (prev - 1 + safePictures.length) % safePictures.length);
     }
-  }, [letter?.pictures]);
+  }, [safePictures.length]);
 
   const goToImage = useCallback((index: number) => {
     setDirection(index > currentImageIndex ? 1 : -1);
     setCurrentImageIndex(index);
   }, [currentImageIndex]);
 
-  if (!letter) return null;
-
-  const variants = {
-    enter: (dir: number) => ({
-      x: dir > 0 ? 1000 : -1000,
-      opacity: 0,
-    }),
-    center: {
-      x: 0,
-      opacity: 1,
-    },
-    exit: (dir: number) => ({
-      x: dir > 0 ? -1000 : 1000,
-      opacity: 0,
-    }),
+  const dragHandlers = {
+    drag: "x" as const,
+    dragConstraints: { left: 0, right: 0 },
+    dragElastic: 1,
+    onDragEnd: (_e: any, { offset, velocity }: any) => {
+      const swipe = offset.x * velocity.x;
+      if (swipe < -10000) nextImage();
+      else if (swipe > 10000) prevImage();
+    }
   };
+
+  if (!letter) return null;
 
   return (
     <AnimatePresence>
@@ -110,7 +202,7 @@ export default function LetterModal({ isOpen, onClose, letter }: LetterModalProp
                     </div>
                   )}
 
-                  {letter.pictures && letter.pictures.length > 0 && (
+                  {safePictures.length > 0 && (
                     <div className="bg-linear-to-br from-blue-50 to-purple-50 rounded-2xl p-6 shadow-lg border-2 border-purple-200">
                       <div className="flex items-center gap-2 mb-4">
                         <span className="text-2xl">📸</span>
@@ -118,36 +210,16 @@ export default function LetterModal({ isOpen, onClose, letter }: LetterModalProp
                       </div>
                       
                       <div className="relative aspect-video bg-gray-900 rounded-xl overflow-hidden shadow-lg">
-                        <AnimatePresence initial={false} custom={direction}>
-                          <motion.img
-                            key={currentImageIndex}
-                            custom={direction}
-                            variants={variants}
-                            initial="enter"
-                            animate="center"
-                            exit="exit"
-                            transition={{
-                              x: { type: 'spring', stiffness: 300, damping: 30 },
-                              opacity: { duration: 0.2 },
-                            }}
-                            src={letter.pictures[currentImageIndex]}
-                            alt={`Memory ${currentImageIndex + 1}`}
-                            className="absolute inset-0 w-full h-full object-contain"
-                            drag="x"
-                            dragConstraints={{ left: 0, right: 0 }}
-                            dragElastic={1}
-                            onDragEnd={(e, { offset, velocity }) => {
-                              const swipe = offset.x * velocity.x;
-                              if (swipe < -10000) {
-                                nextImage();
-                              } else if (swipe > 10000) {
-                                prevImage();
-                              }
-                            }}
+                        <AnimatePresence initial={false} custom={direction} mode='popLayout'>
+                          <MediaDisplay 
+                             key={currentImageIndex}
+                             src={getImageSrc(safePictures[currentImageIndex])}
+                             direction={direction}
+                             dragHandlers={dragHandlers}
                           />
                         </AnimatePresence>
 
-                        {letter.pictures.length > 1 && (
+                        {safePictures.length > 1 && (
                           <>
                             <button
                               onClick={prevImage}
@@ -163,8 +235,8 @@ export default function LetterModal({ isOpen, onClose, letter }: LetterModalProp
                               <ChevronRight size={24} />
                             </button>
 
-                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-black/50 px-3 py-2 rounded-full">
-                              {letter.pictures.map((_, index) => (
+                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-black/50 px-3 py-2 rounded-full z-10">
+                              {safePictures.map((_, index) => (
                                 <button
                                   key={index}
                                   onClick={() => goToImage(index)}

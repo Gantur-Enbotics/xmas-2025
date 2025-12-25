@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import XmasUser from "@/models/xmasUser";
+import XmasUser, { IPicture } from "@/models/xmasUser";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Helper to verify admin token
 function verifyAdmin(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization');
   if (!authHeader?.startsWith('Bearer ')) {
@@ -23,7 +22,42 @@ function verifyAdmin(request: NextRequest): boolean {
   }
 }
 
-// GET - Fetch all letters
+function validatePhoneNumber(phone: string): boolean {
+  return /^\+976 \d{8}$/.test(phone);
+}
+
+function validatePicture(picture: IPicture): { valid: boolean; error?: string } {
+  if (!picture.type || !['url', 'uploaded'].includes(picture.type)) {
+    return { valid: false, error: 'Invalid picture type' };
+  }
+
+  if (!picture.data) {
+    return { valid: false, error: 'Picture data is required' };
+  }
+
+  if (picture.type === 'url') {
+    try {
+      new URL(picture.data);
+    } catch {
+      return { valid: false, error: 'Invalid URL format' };
+    }
+  }
+
+  if (picture.type === 'uploaded') {
+    if (!picture.data.startsWith('data:image/') && !picture.data.startsWith('data:video/')) {
+      return { valid: false, error: 'Invalid media format' };
+    }
+
+    const base64Length = picture.data.length;
+    const sizeInMB = (base64Length * 0.75) / (1024 * 1024);
+    if (sizeInMB > 5) {
+      return { valid: false, error: 'File size exceeds 5MB limit' };
+    }
+  }
+
+  return { valid: true };
+}
+
 export async function GET(request: NextRequest) {
   try {
     if (!verifyAdmin(request)) {
@@ -31,7 +65,6 @@ export async function GET(request: NextRequest) {
     }
 
     await connectDB();
-
     const letters = await XmasUser.find({ deleted: false }).sort({ created_at: -1 });
 
     return NextResponse.json({ success: true, letters });
@@ -41,7 +74,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create new letter
 export async function POST(request: NextRequest) {
   try {
     if (!verifyAdmin(request)) {
@@ -58,9 +90,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!validatePhoneNumber(phone)) {
+      return NextResponse.json(
+        { error: 'Invalid phone number format. Use: +976 XXXXXXXX' },
+        { status: 400 }
+      );
+    }
+
+    if (pictures && Array.isArray(pictures)) {
+      for (const picture of pictures) {
+        const validation = validatePicture(picture);
+        if (!validation.valid) {
+          return NextResponse.json({ error: validation.error }, { status: 400 });
+        }
+      }
+    }
+
     await connectDB();
 
-    // Check if phone already exists
     const existing = await XmasUser.findOne({ phone, deleted: false });
     if (existing) {
       return NextResponse.json(
@@ -86,7 +133,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - Update letter
 export async function PUT(request: NextRequest) {
   try {
     if (!verifyAdmin(request)) {
@@ -100,6 +146,22 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Letter ID is required' }, { status: 400 });
     }
 
+    if (phone && !validatePhoneNumber(phone)) {
+      return NextResponse.json(
+        { error: 'Invalid phone number format. Use: +976 XXXXXXXX' },
+        { status: 400 }
+      );
+    }
+
+    if (pictures && Array.isArray(pictures)) {
+      for (const picture of pictures) {
+        const validation = validatePicture(picture);
+        if (!validation.valid) {
+          return NextResponse.json({ error: validation.error }, { status: 400 });
+        }
+      }
+    }
+
     await connectDB();
 
     const letter = await XmasUser.findById(_id);
@@ -107,7 +169,6 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Letter not found' }, { status: 404 });
     }
 
-    // Check if new phone number conflicts with another letter
     if (phone && phone !== letter.phone) {
       const existing = await XmasUser.findOne({ phone, deleted: false, _id: { $ne: _id } });
       if (existing) {
@@ -133,7 +194,6 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE - Soft delete letter
 export async function DELETE(request: NextRequest) {
   try {
     if (!verifyAdmin(request)) {
