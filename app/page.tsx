@@ -17,6 +17,60 @@ interface TimeLeft {
   total: number;
 }
 
+// Memoized Timer Digit component - prevents unnecessary re-renders
+const TimerDigit = ({ value, label }: { value: number; label: string }) => (
+  <div className="flex flex-col items-center">
+    <div className="relative">
+      <div className="timer-digit-box">
+        <div className="timer-digit-value">
+          {String(value).padStart(2, '0')}
+        </div>
+      </div>
+      <motion.div
+        className="absolute -top-1 -right-1"
+        animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.2, 1] }}
+        transition={{ duration: 2, repeat: Infinity }}
+      >
+        <Sparkles className="text-yellow-300 w-5 h-5 md:w-6 md:h-6" fill="currentColor" />
+      </motion.div>
+    </div>
+    <p className="text-xs md:text-sm font-semibold text-gray-700 mt-2 uppercase tracking-wider">
+      {label}
+    </p>
+    
+    <style jsx>{`
+      .timer-digit-box {
+        background: linear-gradient(to bottom right, #ef4444, #16a34a);
+        border-radius: 1rem;
+        padding: 1rem 1.5rem;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        min-width: 4.375rem;
+      }
+      
+      @media (min-width: 768px) {
+        .timer-digit-box {
+          padding: 1.5rem 2rem;
+          min-width: 6.25rem;
+        }
+      }
+      
+      .timer-digit-value {
+        font-size: 1.875rem;
+        font-weight: 700;
+        color: white;
+        text-align: center;
+        font-family: 'Courier New', monospace;
+      }
+      
+      @media (min-width: 768px) {
+        .timer-digit-value {
+          font-size: 3rem;
+        }
+      }
+    `}</style>
+  </div>
+);
+
 export default function Home() {
   const [letters, setLetters] = useState<any[]>([]);
   const [selectedLetter, setSelectedLetter] = useState<any>(null);
@@ -43,7 +97,6 @@ export default function Home() {
 
   // Calculate time until New Year's Eve at 10PM in Ulaanbaatar timezone
   const calculateTimeLeft = useCallback((): TimeLeft => {
-    // New Year's Eve 2025 at 10PM in Ulaanbaatar (Asia/Ulaanbaatar timezone - UTC+8)
     const newYearDate = new Date('2025-12-31T21:30:00+08:00');
     const now = new Date();
     const difference = newYearDate.getTime() - now.getTime();
@@ -67,7 +120,6 @@ export default function Home() {
       const newTimeLeft = calculateTimeLeft();
       setTimeLeft(newTimeLeft);
 
-      // Show New Year modal when countdown reaches zero (only if not shown before)
       if (newTimeLeft.total === 0 && !showNewYearModal && !hasShownModal) {
         setShowNewYearModal(true);
         setHasShownModal(true);
@@ -75,46 +127,42 @@ export default function Home() {
       }
     }, 1000);
 
-    // Initial calculation
     setTimeLeft(calculateTimeLeft());
-
     return () => clearInterval(timer);
   }, [calculateTimeLeft, showNewYearModal, hasShownModal]);
 
-  // Memoize the fetch function to prevent recreation on every render
-  const fetchPublicLetters = useCallback(async () => {
-    try {
-      const response = await fetch('/api/letters/public');
-      const data = await response.json();
-      
-      if (data.success) {
-        setLetters(data.letters);
-      } else {
-        console.error('Failed to fetch letters');
+  // Fetch letters on mount
+  useEffect(() => {
+    const fetchPublicLetters = async () => {
+      try {
+        const response = await fetch('/api/letters/public');
+        const data = await response.json();
+        
+        if (data.success) {
+          setLetters(data.letters);
+        } else {
+          console.error('Failed to fetch letters');
+        }
+      } catch (error) {
+        console.error('Error fetching letters:', error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching letters:', error);
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    fetchPublicLetters();
   }, []);
 
-  useEffect(() => {
-    fetchPublicLetters();
-  }, [fetchPublicLetters]);
-
-  // Memoize click handler to prevent recreation
+  // Optimized handlers - only recreate when dependencies change
   const handleLetterClick = useCallback((letter: any) => {
     setSelectedLetter(letter);
     setIsAuthModalOpen(true);
   }, []);
 
-  // Memoize auth success handler
-  const handleAuthSuccess = useCallback((userData: any) => {
+  const handleAuthSuccess = useCallback(() => {
     setIsLetterModalOpen(true);
   }, []);
 
-  // Memoize close handlers
   const handleAuthModalClose = useCallback(() => {
     setIsAuthModalOpen(false);
   }, []);
@@ -127,39 +175,13 @@ export default function Home() {
     setShowNewYearModal(false);
   }, []);
 
-  // Memoize empty state check
-  const hasNoLetters = useMemo(() => letters.length === 0, [letters.length]);
-
-  // Timer digit component with one-time smooth animation
-  const TimerDigit = ({ value, label }: { value: number; label: string }) => (
-    <motion.div
-      className="flex flex-col items-center"
-    >
-      <div className="relative">
-        <div className="bg-linear-to-br from-red-500 to-green-600 rounded-2xl p-4 md:p-6 shadow-2xl min-w-17.5 md:min-w-25">
-          <div className="text-3xl md:text-5xl font-bold text-white text-center font-mono">
-            {String(value).padStart(2, '0')}
-          </div>
-        </div>
-        <motion.div
-          className="absolute -top-1 -right-1"
-          animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.2, 1] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        >
-          <Sparkles className="text-yellow-300 w-5 h-5 md:w-6 md:h-6" fill="currentColor" />
-        </motion.div>
-      </div>
-      <p className="text-xs md:text-sm font-semibold text-gray-700 mt-2 uppercase tracking-wider">
-        {label}
-      </p>
-    </motion.div>
-  );
+  // Memoize empty state
+  const hasNoLetters = letters.length === 0;
 
   return (
     <main className="min-h-screen bg-linear-to-br from-red-100 via-white to-green-100">
       <Toaster position="top-center" />
       
-      {/* Falling Snowflakes */}
       <Snowflakes count={25} />
 
       {/* Header */}
@@ -171,7 +193,6 @@ export default function Home() {
       >
         <div className="container mx-auto px-4">
           <div className="text-center">
-            {/* Animated tree emoji */}
             <motion.div
               animate={{ rotate: [0, 10, -10, 0] }}
               transition={{ duration: 2, repeat: Infinity }}
@@ -197,13 +218,9 @@ export default function Home() {
         className="container mx-auto px-4 py-8 relative z-10"
       >
         <div className="max-w-4xl mx-auto">
-          <motion.div
-            className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-6 md:p-10 border-4 border-red-200"
-            whileHover={{ scale: 1.02 }}
-            transition={{ duration: 0.3 }}
-          >
+          <div className="countdown-container">
             <motion.h2
-              className="text-2xl md:text-4xl font-bold text-center mb-6 text-transparent bg-clip-text bg-linear-to-r from-green-600 to-red-600"
+              className="countdown-title"
               animate={{ scale: [1, 1.05, 1] }}
               transition={{ duration: 2, repeat: Infinity }}
             >
@@ -237,7 +254,7 @@ export default function Home() {
               </motion.div>
               <TimerDigit value={timeLeft.seconds} label="Seconds" />
             </div>
-          </motion.div>
+          </div>
         </div>
       </motion.section>
 
@@ -295,7 +312,7 @@ export default function Home() {
         </p>
       </motion.footer>
 
-      {/* New Year Celebration Modal - Optimized Performance */}
+      {/* New Year Modal */}
       <AnimatePresence>
         {showNewYearModal && (
           <motion.div
@@ -312,10 +329,8 @@ export default function Home() {
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
               className="bg-linear-to-br from-purple-500 via-pink-500 to-yellow-500 p-1 rounded-3xl max-w-lg w-full"
               onClick={(e) => e.stopPropagation()}
-              style={{ willChange: 'transform' }}
             >
               <div className="bg-white rounded-3xl p-8 relative overflow-hidden">
-                {/* Close button */}
                 <button
                   onClick={handleNewYearModalClose}
                   className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 transition-colors z-10"
@@ -323,11 +338,9 @@ export default function Home() {
                   <X className="w-6 h-6" />
                 </button>
 
-                {/* Static decorations (no animation for better performance) */}
                 <div className="absolute top-2 left-2 text-4xl">🎊</div>
                 <div className="absolute top-2 right-2 text-4xl">🎉</div>
 
-                {/* Content */}
                 <div className="text-center pt-8">
                   <div className="text-8xl mb-6">🎆🥳🍾</div>
 
@@ -355,18 +368,10 @@ export default function Home() {
                     transition={{ delay: 0.3 }}
                     className="space-y-3"
                   >
-                    <p className="text-base text-gray-600">
-                      🌟 Шинэ адал явдал таныг хүлээж байна
-                    </p>
-                    <p className="text-base text-gray-600">
-                      💫 Том мөрөөдөл зорь, илүү их амжилт
-                    </p>
-                    <p className="text-base text-gray-600">
-                      🎯 Бүх зорилго чинь биелэх болтугай
-                    </p>
-                    <p className="text-base text-gray-600">
-                      ❤️ Эрүүл мэнд, аз жаргал, амжилтын төлөө
-                    </p>
+                    <p className="text-base text-gray-600">🌟 Шинэ адал явдал таныг хүлээж байна</p>
+                    <p className="text-base text-gray-600">💫 Том мөрөөдөл зорь, илүү их амжилт</p>
+                    <p className="text-base text-gray-600">🎯 Бүх зорилго чинь биелэх болтугай</p>
+                    <p className="text-base text-gray-600">❤️ Эрүүл мэнд, аз жаргал, амжилтын төлөө</p>
                   </motion.div>
 
                   <motion.button
@@ -382,7 +387,6 @@ export default function Home() {
                   </motion.button>
                 </div>
 
-                {/* Static bottom decorations */}
                 <div className="absolute bottom-2 left-2 text-3xl">🎈</div>
                 <div className="absolute bottom-2 right-2 text-3xl">🎈</div>
               </div>
@@ -404,6 +408,40 @@ export default function Home() {
         onClose={handleLetterModalClose}
         letter={selectedLetter}
       />
+
+      <style jsx>{`
+        .countdown-container {
+          background: rgba(255, 255, 255, 0.8);
+          backdrop-filter: blur(8px);
+          border-radius: 1.5rem;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+          padding: 2.5rem;
+          border: 4px solid rgb(254 202 202);
+        }
+
+        @media (min-width: 768px) {
+          .countdown-container {
+            padding: 2.5rem;
+          }
+        }
+
+        .countdown-title {
+          font-size: 1.5rem;
+          font-weight: 700;
+          text-align: center;
+          margin-bottom: 1.5rem;
+          background: linear-gradient(to right, #16a34a, #dc2626);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        @media (min-width: 768px) {
+          .countdown-title {
+            font-size: 2.25rem;
+          }
+        }
+      `}</style>
     </main>
   );
 }
