@@ -55,7 +55,6 @@ export default function PhoneAuthModal({
   const sendVerificationCode = useCallback(async () => {
     if (!phoneNumber || phoneNumber.length < 6) return;
     
-    // Prevent double-send if already sending or sent
     if (status === 'SENDING' || status === 'SENT') return;
 
     setStatus('SENDING');
@@ -64,7 +63,7 @@ export default function PhoneAuthModal({
       // Step A: Ensure previous instances are gone
       clearRecaptcha();
 
-      // Step B: Wait a tick for the DOM <div id="recaptcha"> to exist
+      // Step B: Wait for DOM to be ready
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       const container = document.getElementById('recaptcha-container');
@@ -76,8 +75,7 @@ export default function PhoneAuthModal({
       const verifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
         size: 'invisible',
         callback: () => {
-          // reCAPTCHA solved, allow signInWithPhoneNumber.
-          // (Firebase handles this automatically usually)
+          console.log('reCAPTCHA solved');
         },
         'expired-callback': () => {
           toast.error('Recaptcha expired. Please try again.');
@@ -87,8 +85,10 @@ export default function PhoneAuthModal({
 
       window.recaptchaVerifier = verifier;
 
+      // 🔥 KEY FIX: Render the verifier before using it
+      await verifier.render();
+
       // Step D: Send SMS
-      // Important: We pass the verifier instance directly
       const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
       
       setConfirmationResult(result);
@@ -98,7 +98,7 @@ export default function PhoneAuthModal({
     } catch (err: any) {
       console.error('SMS Error:', err);
       setStatus('IDLE');
-      clearRecaptcha(); // Clean up so they can try again
+      clearRecaptcha();
 
       if (err.code === 'auth/too-many-requests') {
         toast.error('Too many attempts. Try again later.');
@@ -268,7 +268,7 @@ export default function PhoneAuthModal({
                  We keep it hidden but technically "visible" to the DOM (not display:none) 
                  so Recaptcha can attach. 
               */}
-              <div id="recaptcha-container" className="invisible w-0 h-0" />
+              <div id="recaptcha-container" style={{ position: 'absolute', top: '-9999px' }} />
             </motion.div>
           </div>
         </>
