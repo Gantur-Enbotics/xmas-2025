@@ -218,15 +218,8 @@ export default function Home() {
         className="container mx-auto px-4 py-8 relative z-10"
       >
         <div className="max-w-4xl mx-auto">
-          <div className="countdown-container">
-            <motion.h2
-              className="countdown-title"
-              animate={{ scale: [1, 1.05, 1] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            >
-              🎉 New Year till 🎉
-            </motion.h2>
-            
+          <div className='text-gray-500 text-center text-xl py-2'>🎆 New Year Till: 🎆</div>
+          <div className="countdown-container">            
             <div className="flex justify-center items-center gap-3 md:gap-6 flex-wrap">
               <TimerDigit value={timeLeft.days} label="Days" />
               <motion.div
